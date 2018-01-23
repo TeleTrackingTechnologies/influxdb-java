@@ -134,6 +134,30 @@ public interface InfluxDB {
    */
   public InfluxDB enableBatch(final int actions, final int flushDuration, final TimeUnit flushDurationTimeUnit,
                               final ThreadFactory threadFactory);
+  /**
+   * Enable batching of single Point writes with consistency set for an entire batch
+   * flushDurations is reached first, a batch write is issued.
+   * Note that batch processing needs to be explicitly stopped before the application is shutdown.
+   * To do so call disableBatch(). Default consistency is ONE.
+   *
+   * @param actions
+   *            the number of actions to collect
+   * @param flushDuration
+   *            the time to wait at most.
+   * @param flushDurationTimeUnit
+   *            the TimeUnit for the given flushDuration.
+   * @param threadFactory
+   *            a ThreadFactory instance to be used.
+   * @param exceptionHandler
+   *            a consumer function to handle asynchronous errors
+   * @param consistency
+   *            a consistency setting for batch writes.
+   * @return the InfluxDB instance to be able to use it in a fluent manner.
+   */
+
+  InfluxDB enableBatch(int actions, int flushDuration, TimeUnit flushDurationTimeUnit,
+                       ThreadFactory threadFactory, BiConsumer<Iterable<Point>, Throwable> exceptionHandler,
+                       ConsistencyLevel consistency);
 
   /**
    * Enable batching of single Point writes to speed up writes significant. If either actions or
@@ -342,7 +366,10 @@ public interface InfluxDB {
    *
    * @param name
    *            the name of the new database.
+   * @deprecated (since 2.9, removed in 3.0) Use <tt>org.influxdb.InfluxDB.query(Query)</tt> to execute a parameterized
+   *             <strong>CREATE DATABASE</strong> query.
    */
+  @Deprecated
   public void createDatabase(final String name);
 
   /**
@@ -350,14 +377,20 @@ public interface InfluxDB {
    *
    * @param name
    *            the name of the database to delete.
+   * @deprecated (since 2.9, removed in 3.0) Use <tt>org.influxdb.InfluxDB.query(Query)</tt> to execute a
+   *             <strong>DROP DATABASE</strong> query.
    */
+  @Deprecated
   public void deleteDatabase(final String name);
 
   /**
    * Describe all available databases.
    *
    * @return a List of all Database names.
+   * @deprecated (since 2.9, removed in 3.0) Use <tt>org.influxdb.InfluxDB.query(Query)</tt> to execute a
+   *             <strong>SHOW DATABASES</strong> query.
    */
+  @Deprecated
   public List<String> describeDatabases();
 
   /**
@@ -367,7 +400,10 @@ public interface InfluxDB {
    *            the name of the database to search.
    *
    * @return true if the database exists or false if it doesn't exist
+   * @deprecated (since 2.9, removed in 3.0) Use <tt>org.influxdb.InfluxDB.query(Query)</tt> to execute a
+   *             <strong>SHOW DATABASES</strong> query and inspect the result.
    */
+  @Deprecated
   public boolean databaseExists(final String name);
 
   /**
@@ -418,7 +454,10 @@ public interface InfluxDB {
    * @param shardDuration the shardDuration
    * @param replicationFactor the replicationFactor of the rp
    * @param isDefault if the rp is the default rp for the database or not
+   * @deprecated (since 2.9, removed in 3.0) Use <tt>org.influxdb.InfluxDB.query(Query)</tt> to execute a parameterized
+   *             <strong>CREATE RETENTION POLICY</strong> query.
    */
+  @Deprecated
   public void createRetentionPolicy(final String rpName, final String database, final String duration,
                                     final String shardDuration, final int replicationFactor, final boolean isDefault);
 
@@ -429,7 +468,10 @@ public interface InfluxDB {
    * @param duration the duration of the rp
    * @param replicationFactor the replicationFactor of the rp
    * @param isDefault if the rp is the default rp for the database or not
+   * @deprecated (since 2.9, removed in 3.0) Use <tt>org.influxdb.InfluxDB.query(Query)</tt> to execute a parameterized
+   *             <strong>CREATE RETENTION POLICY</strong> query.
    */
+  @Deprecated
   public void createRetentionPolicy(final String rpName, final String database, final String duration,
                                     final int replicationFactor, final boolean isDefault);
 
@@ -440,7 +482,10 @@ public interface InfluxDB {
    * @param duration the duration of the rp
    * @param shardDuration the shardDuration
    * @param replicationFactor the replicationFactor of the rp
+   * @deprecated (since 2.9, removed in 3.0) Use <tt>org.influxdb.InfluxDB.query(Query)</tt> to execute a parameterized
+   *             <strong>CREATE RETENTION POLICY</strong> query.
    */
+  @Deprecated
   public void createRetentionPolicy(final String rpName, final String database, final String duration,
                                     final String shardDuration, final int replicationFactor);
 
@@ -448,6 +493,9 @@ public interface InfluxDB {
    * Drops a retentionPolicy in a database.
    * @param rpName the name of the retentionPolicy
    * @param database the name of the database
+   * @deprecated (since 2.9, removed in 3.0) Use <tt>org.influxdb.InfluxDB.query(Query)</tt> to execute a
+   *             <strong>DROP RETENTION POLICY</strong> query.
    */
+  @Deprecated
   public void dropRetentionPolicy(final String rpName, final String database);
 }

@@ -1,5 +1,19 @@
 package org.influxdb;
 
+import org.influxdb.InfluxDB.LogLevel;
+import org.influxdb.dto.BatchPoints;
+import org.influxdb.dto.Point;
+import org.influxdb.dto.Pong;
+import org.influxdb.dto.Query;
+import org.influxdb.dto.QueryResult;
+import org.influxdb.impl.InfluxDBImpl;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.platform.runner.JUnitPlatform;
+import org.junit.runner.RunWith;
+
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -9,24 +23,11 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
-
-import org.influxdb.InfluxDB.LogLevel;
-import org.influxdb.dto.BatchPoints;
-import org.influxdb.dto.Point;
-import org.influxdb.dto.Pong;
-import org.influxdb.dto.Query;
-import org.influxdb.dto.QueryResult;
-import org.influxdb.impl.InfluxDBImpl;
-import org.junit.jupiter.api.Assertions;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.junit.platform.runner.JUnitPlatform;
-import org.junit.runner.RunWith;
 
 /**
  * Test the InfluxDB API.
@@ -55,7 +56,7 @@ public class InfluxDBTest {
 			Pong response;
 			try {
 				response = this.influxDB.ping();
-				if (!response.getVersion().equalsIgnoreCase("unknown")) {
+				if (response.isGood()) {
 					influxDBstarted = true;
 				}
 			} catch (Exception e) {
@@ -149,7 +150,7 @@ public class InfluxDBTest {
 		Assertions.assertTrue(found, "It is expected that describeDataBases contents the newly create database.");
 		this.influxDB.deleteDatabase(dbName);
 	}
-	
+
 	/**
 	 * Test that Database exists works.
 	 */
@@ -192,6 +193,61 @@ public class InfluxDBTest {
 	}
 
 	/**
+	 *  Test the implementation of {@link InfluxDB#write(int, Point)}'s sync support.
+	 */
+	@Test
+	public void testSyncWritePointThroughUDP() throws InterruptedException {
+		this.influxDB.disableBatch();
+		String measurement = TestUtils.getRandomMeasurement();
+		Point point = Point.measurement(measurement).tag("atag", "test").addField("used", 80L).addField("free", 1L).build();
+		this.influxDB.write(UDP_PORT, point);
+		Thread.sleep(2000);
+		Query query = new Query("SELECT * FROM " + measurement + " GROUP BY *", UDP_DATABASE);
+		QueryResult result = this.influxDB.query(query);
+		Assertions.assertFalse(result.getResults().get(0).getSeries().get(0).getTags().isEmpty());
+	}
+
+	/**
+	 *  Test the implementation of {@link InfluxDB#write(int, Point)}'s async support.
+	 */
+	@Test
+	public void testAsyncWritePointThroughUDP() throws InterruptedException {
+		this.influxDB.enableBatch(1, 1, TimeUnit.SECONDS);
+		try{
+			Assertions.assertTrue(this.influxDB.isBatchEnabled());
+			String measurement = TestUtils.getRandomMeasurement();
+			Point point = Point.measurement(measurement).tag("atag", "test").addField("used", 80L).addField("free", 1L).build();
+			this.influxDB.write(UDP_PORT, point);
+			Thread.sleep(2000);
+			Query query = new Query("SELECT * FROM " + measurement + " GROUP BY *", UDP_DATABASE);
+			QueryResult result = this.influxDB.query(query);
+			Assertions.assertFalse(result.getResults().get(0).getSeries().get(0).getTags().isEmpty());
+		}finally{
+			this.influxDB.disableBatch();
+		}
+	}
+
+
+    /**
+     *  Test the implementation of {@link InfluxDB#write(int, Point)}'s async support.
+     */
+    @Test
+    public void testAsyncWritePointThroughUDPFail() {
+        this.influxDB.enableBatch(1, 1, TimeUnit.SECONDS);
+        try{
+            Assertions.assertTrue(this.influxDB.isBatchEnabled());
+            String measurement = TestUtils.getRandomMeasurement();
+            Point point = Point.measurement(measurement).tag("atag", "test").addField("used", 80L).addField("free", 1L).build();
+            Thread.currentThread().interrupt();
+            Assertions.assertThrows(RuntimeException.class, () -> {
+				this.influxDB.write(UDP_PORT, point);
+			});
+        }finally{
+            this.influxDB.disableBatch();
+        }
+    }
+
+	/**
 	* Test writing with batched tags
 	*/
 	@Test
@@ -218,61 +274,6 @@ public class InfluxDBTest {
 		Assertions.assertFalse(result.getResults().get(0).getSeries().get(0).getTags().isEmpty());
 		this.influxDB.deleteDatabase(dbName);
 	}
-	
-	/**
-	 *  Test the implementation of {@link InfluxDB#write(int, Point)}'s sync support.
-	 */
-	@Test
-	public void testSyncWritePointThroughUDP() throws InterruptedException {
-		this.influxDB.disableBatch();
-		String measurement = TestUtils.getRandomMeasurement();
-		Point point = Point.measurement(measurement).tag("atag", "test").addField("used", 80L).addField("free", 1L).build();
-		this.influxDB.write(UDP_PORT, point);
-		Thread.sleep(2000);
-		Query query = new Query("SELECT * FROM " + measurement + " GROUP BY *", UDP_DATABASE);
-		QueryResult result = this.influxDB.query(query);
-		Assertions.assertFalse(result.getResults().get(0).getSeries().get(0).getTags().isEmpty());
-	}
-	
-	/**
-	 *  Test the implementation of {@link InfluxDB#write(int, Point)}'s async support.
-	 */
-	@Test
-	public void testAsyncWritePointThroughUDP() throws InterruptedException {
-		this.influxDB.enableBatch(1, 1, TimeUnit.SECONDS);
-		try{
-			Assertions.assertTrue(this.influxDB.isBatchEnabled());
-			String measurement = TestUtils.getRandomMeasurement();
-			Point point = Point.measurement(measurement).tag("atag", "test").addField("used", 80L).addField("free", 1L).build();
-			this.influxDB.write(UDP_PORT, point);
-			Thread.sleep(2000);
-			Query query = new Query("SELECT * FROM " + measurement + " GROUP BY *", UDP_DATABASE);
-			QueryResult result = this.influxDB.query(query);
-			Assertions.assertFalse(result.getResults().get(0).getSeries().get(0).getTags().isEmpty());
-		}finally{
-			this.influxDB.disableBatch();
-		}
-	}
-	
-    
-    /**
-     *  Test the implementation of {@link InfluxDB#write(int, Point)}'s async support.
-     */
-    @Test
-    public void testAsyncWritePointThroughUDPFail() {
-        this.influxDB.enableBatch(1, 1, TimeUnit.SECONDS);
-        try{
-            Assertions.assertTrue(this.influxDB.isBatchEnabled());
-            String measurement = TestUtils.getRandomMeasurement();
-            Point point = Point.measurement(measurement).tag("atag", "test").addField("used", 80L).addField("free", 1L).build();
-            Thread.currentThread().interrupt();
-            Assertions.assertThrows(RuntimeException.class, () -> {
-				this.influxDB.write(UDP_PORT, point);
-			});
-        }finally{
-            this.influxDB.disableBatch();
-        }
-    }
 
     /**
      * Test writing to the database using string protocol.
@@ -491,7 +492,7 @@ public class InfluxDBTest {
 		Assertions.assertTrue(result.contains(numericDbName));
 		this.influxDB.deleteDatabase(numericDbName);
 	}
-	
+
     /**
      * Test that creating database which name is empty will throw expected exception
      */
@@ -531,7 +532,7 @@ public class InfluxDBTest {
 		this.influxDB.disableBatch();
 		Assertions.assertFalse(this.influxDB.isBatchEnabled());
 	}
-	
+
 	/**
 	 * Test the implementation of {@link InfluxDB#enableBatch(int, int, TimeUnit, ThreadFactory)}.
 	 */
@@ -539,7 +540,7 @@ public class InfluxDBTest {
 	public void testBatchEnabledWithThreadFactory() {
 		final String threadName = "async_influxdb_write";
 		this.influxDB.enableBatch(1, 1, TimeUnit.SECONDS, new ThreadFactory() {
-			
+
 			@Override
 			public Thread newThread(Runnable r) {
 				Thread thread = new Thread(r);
@@ -554,7 +555,7 @@ public class InfluxDBTest {
 				existThreadWithSettedName = true;
 				break;
 			}
-			
+
 		}
 		Assertions.assertTrue(existThreadWithSettedName);
 		this.influxDB.disableBatch();
@@ -566,7 +567,7 @@ public class InfluxDBTest {
 			this.influxDB.enableBatch(1, 1, TimeUnit.SECONDS, null);
 		});
 	}
-	
+
 	/**
 	 * Test the implementation of {@link InfluxDBImpl#InfluxDBImpl(String, String, String, okhttp3.OkHttpClient.Builder)}.
 	 */
@@ -808,4 +809,15 @@ public class InfluxDBTest {
 		Assertions.assertTrue(retentionPolicies.size() == 1);
 	}
 
+	/**
+	 * Test the implementation of {@link InfluxDB#isBatchEnabled() with consistency}.
+	 */
+	@Test
+	public void testIsBatchEnabledWithConsistency() {
+		Assertions.assertFalse(this.influxDB.isBatchEnabled());
+		this.influxDB.enableBatch(1, 1, TimeUnit.SECONDS, Executors.defaultThreadFactory(),
+				(a, b) -> {
+				}, InfluxDB.ConsistencyLevel.ALL);
+		Assertions.assertTrue(this.influxDB.isBatchEnabled());
+	}
 }
